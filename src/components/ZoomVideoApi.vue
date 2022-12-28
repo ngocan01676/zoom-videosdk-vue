@@ -62,6 +62,7 @@
 import ZoomVideo, { ConnectionState } from '@zoom/videosdk';
 import { KJUR } from 'jsrsasign';
 import dotenv from 'dotenv';
+import sessionConfig from '../config/config';
 
 export default {
   name: 'ZoomVideoApi',
@@ -73,7 +74,7 @@ export default {
       SDK_KEY: null,
       SDK_SECRET: null,
       session_name: '세션네임',
-      session_password: '1234',
+      session_password: '',
       userName: 'tester',
 
       client: null,
@@ -151,13 +152,19 @@ export default {
 
       this.VIDEO_CANVAS = document.querySelector('.video-canvas'); // canvas to render the video
 
-      const signature = this.generateVideoToken(
-        this.SDK_KEY,
-        this.SDK_SECRET,
-        this.session_name,
-        this.session_password
+      // const signature = this.generateVideoToken(
+      //   this.SDK_KEY,
+      //   this.SDK_SECRET,
+      //   this.session_name,
+      //   this.session_password
+      // );
+      const sessionToken = this.generateSessionToken(
+        sessionConfig.sdkKey,
+        sessionConfig.sdkSecret,
+        sessionConfig.topic,
+        sessionConfig.password,
+        sessionConfig.sessionKey
       );
-      console.log(signature);
 
       this.client = ZoomVideo.createClient();
 
@@ -173,10 +180,10 @@ export default {
 
       await this.client
         .join(
-          this.session_name,
-          signature,
-          this.newSessionName,
-          this.session_password
+          sessionConfig.topic,
+          sessionToken,
+          sessionConfig.name,
+          sessionConfig.password
         )
         .then((data) => {
           console.log('client join');
@@ -188,6 +195,7 @@ export default {
         });
 
       this.currentUser = this.client.getCurrentUserInfo();
+      console.log(' this.currentUser  this.currentUser ', this.currentUser);
       this.stream = this.client.getMediaStream();
       this.stream.startAudio().then(() => console.log('join audio'));
 
@@ -406,6 +414,42 @@ export default {
       const sHeader = JSON.stringify(oHeader);
       const sPayload = JSON.stringify(oPayload);
       signature = KJUR.jws.JWS.sign('HS256', sHeader, sPayload, sdkSecret);
+      return signature;
+    },
+
+    generateSessionToken(
+      sdkKey,
+      sdkSecret,
+      topic,
+      passWord = '',
+      sessionKey = '',
+      userIdentity = '',
+      roleType = 1
+    ) {
+      let signature = '';
+      try {
+        const iat = Math.round(new Date().getTime() / 1000);
+        const exp = iat + 60 * 60 * 2;
+
+        // Header
+        const oHeader = { alg: 'HS256', typ: 'JWT' };
+        // Payload
+        const oPayload = {
+          app_key: sdkKey,
+          iat,
+          exp,
+          tpc: topic,
+          pwd: passWord,
+          user_identity: userIdentity,
+          session_key: sessionKey,
+          role_type: roleType, // role=1, host, role=0 is attendee, only role=1 can start session when session not start
+        };
+        const sHeader = JSON.stringify(oHeader);
+        const sPayload = JSON.stringify(oPayload);
+        signature = KJUR.jws.JWS.sign('HS256', sHeader, sPayload, sdkSecret);
+      } catch (e) {
+        console.error(e);
+      }
       return signature;
     },
 
